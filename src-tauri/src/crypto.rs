@@ -61,6 +61,39 @@ impl Certificate {
         Ok(private_key.private_key_to_der()?)
     }
 
+    pub fn extract_public_key(&self) -> Result<Vec<u8>, CryptError> {
+        let parsed_cert = match &self.unlocked_certificate {
+            Some(val) => val,
+            None => return Err(CryptError::UnlockRequired),
+        };
+
+        let public_key = match parsed_cert.cert.as_ref() {
+            Some(val) => val.public_key()?,
+            None => {
+                return Err(CryptError::Unknown(
+                    "No certificate could be extracted".to_string(),
+                ))
+            }
+        };
+
+        Ok(public_key.public_key_to_der()?)
+    }
+
+    fn get_email_address(subject: &openssl::x509::X509NameRef) -> Result<String, CryptError> {
+        for entry in subject.entries() {
+            let short_name = match entry.object().nid().short_name() {
+                Ok(name) => name.to_string(),
+                Err(_) => entry.object().to_string(),
+            };
+
+            if short_name == "emailAddress" {
+                return Ok(entry.data().as_utf8().unwrap().to_string());
+            }
+        }
+
+        Err(CryptError::default())
+    }
+
     #[warn(non_snake_case)]
     pub fn Info(unlocked_certificate: &ParsedPkcs12_2) -> Result<CertificateInfo, CryptError> {
         let cert = match &unlocked_certificate.cert {
@@ -79,14 +112,7 @@ impl Certificate {
                 .data()
                 .as_utf8()?
                 .to_string(),
-            subj: cert
-                .subject_name()
-                .entries_by_nid(openssl::nid::Nid::COMMONNAME)
-                .next()
-                .unwrap()
-                .data()
-                .as_utf8()?
-                .to_string(),
+            subj: Certificate::get_email_address(cert.subject_name())?,
         })
     }
 

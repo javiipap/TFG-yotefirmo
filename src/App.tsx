@@ -23,26 +23,20 @@ export default function App() {
 
   const createListener = async () => {
     unlisten.current = await listen<string>('select-cert', (evt) => {
-      alert(`Recibido evento de cliente ${evt.payload}`);
       setState((st) => ({ ...st, screen: 'drop-cert', hash: evt.payload }));
     });
   };
 
   const submitPassphrase = async (passphraseValue: string) => {
-    const certInfo = await invoke('update_passphrase', { passphraseValue });
-
-    alert(certInfo);
+    const _certInfo = await invoke('update_passphrase', { passphraseValue });
 
     setState((st) => ({ ...st, screen: 'landing' }));
   };
 
   const submitCertificate = async (certificateValue: Uint8Array) => {
-    alert('enviando certificado' + typeof certificateValue);
     const certInfo = await invoke('update_certificate', {
       certificateValue,
     });
-
-    alert(certInfo);
 
     if (!certInfo) {
       setState((st) => ({ ...st, screen: 'set-passphrase' }));

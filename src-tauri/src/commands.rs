@@ -31,13 +31,9 @@ pub async fn listen_ws_events(app: tauri::AppHandle) {
         app.emit("select-cert", (*hash).clone().unwrap()).unwrap();
 
         // Esperar a que se cargue el certificado
-        let cert_cvar = &state.hash_cvar;
-        let mut certificate = state.certificate.lock().unwrap();
-        while (*certificate).is_none() {
-            certificate = cert_cvar.wait(certificate).unwrap();
+        while (*hash).is_some() {
+            hash = hash_cvar.wait(hash).unwrap();
         }
-
-        *hash = None;
     }
 }
 

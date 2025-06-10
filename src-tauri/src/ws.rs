@@ -29,6 +29,7 @@ struct WSRequest {
 #[derive(Clone, Serialize, Deserialize)]
 struct WSResponse {
     pub certificate: Vec<u8>,
+    pub public_key: Vec<u8>,
     pub subj: String,
     pub result: Vec<u8>,
 }
@@ -69,18 +70,18 @@ async fn handle_connection(stream: TcpStream, addr: SocketAddr) {
         println!("Mensaje recibido de {}", addr);
         println!("|- Acción: {}", action);
 
-        let data_hash = Sha256::digest(payload.clone());
+        let payload_hash = Sha256::digest(payload.clone()).to_vec();
 
-        let certificate = choose_certificate(format!("{:x?}", data_hash)).unwrap();
+        let certificate = choose_certificate(format!("{:x?}", payload_hash)).unwrap();
 
         let private_key = certificate
             .extract_private_key()
             .expect("Couldn't extract private key from certificate");
 
-        let result = if action == "encrypt" {
-            primitives::signatures::rsa_encrypt(private_key, payload.clone()).unwrap()
+        let result = if action == "decrypt" {
+            primitives::signatures::rsa_decrypt(private_key, payload.clone()).unwrap()
         } else if action == "sign" {
-            primitives::signatures::rsa_sign(private_key, payload).unwrap()
+            primitives::signatures::rsa_sign(private_key, payload.clone()).unwrap()
         } else {
             panic!("Not implemented");
         };
@@ -88,11 +89,13 @@ async fn handle_connection(stream: TcpStream, addr: SocketAddr) {
         let response = Message::text(
             serde_json::to_string(&WSResponse {
                 certificate: certificate.to_pem().unwrap(),
-                result,
+                public_key: certificate.extract_public_key().unwrap(),
+                result: result.clone(),
                 subj: certificate.info().unwrap().subj,
             })
             .expect("Couldn't encode response"),
         );
+
         if let Err(e) = write.send(response).await {
             println!("Error al enviar mensaje: {}", e);
             break;

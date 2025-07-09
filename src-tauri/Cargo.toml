@@ -28,3 +28,8 @@ tokio-tungstenite = "0.26.2"
 futures-util = "0.3.31"
 sha2 = "0.10.9"
 openssl = { version = "0.10.73", features = ["vendored"] }
+tauri-plugin-deep-link = "2"
+hex = "0.4.3"
+
+[target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
+tauri-plugin-single-instance = { version = "2.0.0", features = ["deep-link"] }

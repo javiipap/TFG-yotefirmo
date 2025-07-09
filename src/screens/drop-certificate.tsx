@@ -17,8 +17,14 @@ export default function DropCertificate() {
   };
 
   return (
-    <div className="">
-      <input type="file" name="certificate" onChange={onChange} id="" />
+    <>
+      <input
+        type="file"
+        name="certificate"
+        onChange={onChange}
+        id=""
+        style={{ marginRight: 8 }}
+      />
       <button
         onClick={async () =>
           !!certificate &&
@@ -27,6 +33,6 @@ export default function DropCertificate() {
       >
         Seleccionar
       </button>
-    </div>
+    </>
   );
 }

@@ -2,16 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import './App.css';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import DropCertificate from './screens/drop-certificate';
-import SetPassphrase from './screens/set-passphrase';
 import Landing from './screens/landing';
-import { GlobalContext } from './context';
-
-interface State {
-  screen: 'landing' | 'drop-cert' | 'set-passphrase';
-  passphrase: string;
-  hash: null | string;
-}
+import { GlobalContext, State } from './context';
+import Layout from './screens/layout';
 
 export default function App() {
   const [state, setState] = useState<State>({
@@ -19,18 +12,41 @@ export default function App() {
     passphrase: '',
     hash: null,
   });
+
   const unlisten = useRef<null | UnlistenFn>(null);
+  const unlisten2 = useRef<null | UnlistenFn>(null);
 
   const createListener = async () => {
     unlisten.current = await listen<string>('select-cert', (evt) => {
-      setState((st) => ({ ...st, screen: 'drop-cert', hash: evt.payload }));
+      const { hash, action } = JSON.parse(evt.payload);
+      setState((st) => ({
+        ...st,
+        screen: 'drop-cert',
+        hash,
+        action,
+      }));
+    });
+  };
+
+  const createListener2 = async () => {
+    unlisten2.current = await listen<string>('verification-info', (evt) => {
+      const { cert_info, hash, success } = JSON.parse(evt.payload);
+      setState((st) => ({
+        ...st,
+        screen: 'verification-info',
+        certInfo: { ...cert_info, success },
+        hash,
+        action: 'verification',
+      }));
     });
   };
 
   const submitPassphrase = async (passphraseValue: string) => {
-    const _certInfo = await invoke('update_passphrase', { passphraseValue });
+    const isValid = await invoke('update_passphrase', { passphraseValue });
 
     setState((st) => ({ ...st, screen: 'landing' }));
+
+    return isValid as boolean;
   };
 
   const submitCertificate = async (certificateValue: Uint8Array) => {
@@ -48,8 +64,11 @@ export default function App() {
   useEffect(() => {
     invoke('listen_ws_events');
     createListener();
+    createListener2();
+
     return () => {
       unlisten.current && unlisten.current();
+      unlisten2.current && unlisten2.current();
     };
   }, []);
 
@@ -58,9 +77,8 @@ export default function App() {
       <GlobalContext.Provider
         value={{ submitCertificate, submitPassphrase, ...state }}
       >
-        {state.screen === 'drop-cert' && <DropCertificate />}
         {state.screen === 'landing' && <Landing />}
-        {state.screen === 'set-passphrase' && <SetPassphrase />}
+        {state.screen !== 'landing' && <Layout />}
       </GlobalContext.Provider>
     </main>
   );

@@ -1,4 +1,7 @@
-use crate::utils::choose_certificate;
+use crate::{
+    crypto::Certificate,
+    utils::{choose_certificate, notify_verification},
+};
 use futures_util::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -32,6 +35,18 @@ struct WSResponse {
     pub public_key: Vec<u8>,
     pub subj: String,
     pub result: Vec<u8>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct VerificationRequest {
+    pub certificate: Vec<u8>,
+    pub signature: Vec<u8>,
+    pub data: Vec<u8>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct WSVerificationResponse {
+    pub verified: bool,
 }
 
 async fn handle_connection(stream: TcpStream, addr: SocketAddr) {
@@ -70,9 +85,43 @@ async fn handle_connection(stream: TcpStream, addr: SocketAddr) {
         println!("Mensaje recibido de {}", addr);
         println!("|- Acción: {}", action);
 
+        if action == "verify" {
+            let VerificationRequest {
+                certificate,
+                signature,
+                data,
+            } = serde_json::from_slice(payload.clone().as_slice()).unwrap();
+
+            let (info, public_key) = Certificate::ReadPublic(&certificate).unwrap();
+
+            let verified =
+                match primitives::signatures::rsa_verify(public_key, data, signature.clone()) {
+                    Ok(_) => true,
+                    Err(e) => {
+                        println!("{:?}", e);
+                        false
+                    }
+                };
+
+            notify_verification(info, hex::encode(signature), verified);
+
+            println!("Enviando respuesta");
+            let response = Message::text(
+                serde_json::to_string(&WSVerificationResponse { verified: verified })
+                    .expect("Couldn't encode response"),
+            );
+
+            if let Err(e) = write.send(response).await {
+                println!("Error al enviar mensaje: {}", e);
+                break;
+            }
+
+            continue;
+        }
+
         let payload_hash = Sha256::digest(payload.clone()).to_vec();
 
-        let certificate = choose_certificate(format!("{:x?}", payload_hash)).unwrap();
+        let certificate = choose_certificate(&action, &hex::encode(&payload_hash)).unwrap();
 
         let private_key = certificate
             .extract_private_key()
@@ -86,6 +135,7 @@ async fn handle_connection(stream: TcpStream, addr: SocketAddr) {
             panic!("Not implemented");
         };
 
+        println!("Enviando respuesta");
         let response = Message::text(
             serde_json::to_string(&WSResponse {
                 certificate: certificate.to_pem().unwrap(),

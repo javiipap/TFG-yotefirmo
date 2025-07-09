@@ -4,6 +4,7 @@ use crate::{
     crypto::{Certificate, CertificateInfo},
     GLOBAL_STATE,
 };
+use serde_json::json;
 
 #[tauri::command]
 pub async fn listen_ws_events(app: tauri::AppHandle) {
@@ -27,8 +28,33 @@ pub async fn listen_ws_events(app: tauri::AppHandle) {
             hash = hash_cvar.wait(hash).unwrap();
         }
 
+        let action = state.action.lock().unwrap();
+
         println!("Notificando la UI");
-        app.emit("select-cert", (*hash).clone().unwrap()).unwrap();
+
+        if *action == "verify-ok" || *action == "verify-err" {
+            let cert_info = state.cert_info.lock().unwrap();
+
+            let payload = json!({
+                "action": (*action).clone(),
+                "hash": (*hash).clone().unwrap(),
+                "cert_info": (*cert_info).clone().unwrap(),
+                "success": *action == "verify-ok"
+            })
+            .to_string();
+
+            *hash = None;
+
+            app.emit("verification-info", payload).unwrap();
+        } else {
+            let payload = json!({
+                "action": (*action).clone(),
+                "hash": (*hash).clone().unwrap()
+            })
+            .to_string();
+
+            app.emit("select-cert", payload).unwrap();
+        }
 
         // Esperar a que se cargue el certificado
         while (*hash).is_some() {

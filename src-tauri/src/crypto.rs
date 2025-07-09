@@ -1,6 +1,9 @@
 use openssl::pkcs12::Pkcs12;
+use openssl::pkey::{PKey, Public};
 use openssl::{error::ErrorStack, pkcs12::ParsedPkcs12_2};
 use serde::{Deserialize, Serialize};
+
+use openssl::x509::X509;
 
 use crate::error::CryptError;
 
@@ -92,6 +95,30 @@ impl Certificate {
         }
 
         Err(CryptError::default())
+    }
+
+    #[warn(non_snake_case)]
+    pub fn ReadPublic(pem: &Vec<u8>) -> Result<(CertificateInfo, Vec<u8>), CryptError> {
+        let certificate = X509::from_pem(pem)?;
+
+        let public_key = certificate.public_key()?;
+
+        Ok((
+            CertificateInfo {
+                iat: certificate.not_before().to_string(),
+                exp: certificate.not_after().to_string(),
+                issuer: certificate
+                    .issuer_name()
+                    .entries_by_nid(openssl::nid::Nid::COMMONNAME)
+                    .next()
+                    .unwrap()
+                    .data()
+                    .as_utf8()?
+                    .to_string(),
+                subj: Certificate::get_email_address(certificate.subject_name())?,
+            },
+            public_key.public_key_to_der()?,
+        ))
     }
 
     #[warn(non_snake_case)]
